@@ -15,7 +15,7 @@ from ar_track_alvar_msgs.msg import AlvarMarkers
 
 
 numpy.set_printoptions(threshold=numpy.nan)
-counter = 5
+counter = 0
 gshape = "triangle"
 random = 'two'
 
@@ -23,7 +23,7 @@ BoxGoal = None
 BoxSpot = None
 
 BoxAR = [1]
-OtherAR = [3]
+OtherAR = [3,2]
 
 objectives = ["random", "ar_tag", "shape"]
 parking_spot = ["one","two","three", "four","five"]
@@ -48,7 +48,7 @@ exit_enter_waypoints = [
 ['exit1', (0.886, 0.45), (0.0, 0.0, 0, 1)],
 ['exit2', (1.26, 0.228), (0.0, 0.0, -0.731, .682)],
 ['exit3', (1.39, -0.00465), (0.0, 0.0, -0.731, .682)],
-['enter1',(2.48  , -0.9),(0.0, 0.0, -0.731, .682) ],
+['enter1',(2.12, -0.84), (0, 0,.6935,.7203)],
 ['enter2', (3.68, -0.836), (0, 0,.6935,.7203)],
 ['enter3', (3.9, 0.17), (0, 0,.6935,.7203)]
 ]
@@ -63,7 +63,7 @@ push_waypoints = [
 ['one', (3.84 +.04, -1.75 -.1), (0.0, 0.0, -0.731, .682)],
 ['two', (3.12 , -1.8 -.1),  (0.0, 0.0, -0.731, .682)],
 ['three', (2.43 +0.3, -1.76 - .1),(0.0, 0.0, -0.731, .682) ],
-['four', (1.73+.04, -1.76 -.1),  (0.0, 0.0, -0.731, .682)],
+['four', (1.73 - 0.06, -1.76 -.1),  (0.0, 0.0, -0.731, .682)],
 ['five', (0.899 +.04, -1.8 - 0.1,), (0.0, 0.0, -0.731, .682)]
 ]
 
@@ -75,6 +75,8 @@ ar_waypoints = [
 ['checkAR2', (3.12 , -0.9),  (0.0, 0.0, -0.731, .682)],
 
 ['checkAR1', (3.84 +.04, -1.1), (0.0, 0.0, -0.731, .682)]
+
+
 ]
 
 class SleepState(smach.State):
@@ -142,14 +144,14 @@ class LineFollow(smach.State):
                 return 'Done'
 
             elif self.stop:
-                if counter == 0 or counter == 2 or counter == 4 or counter == 7 or counter == 8 or counter == 9:
+                if counter == 2 or counter == 4 or counter == 7 or counter == 8 or counter == 9:
                     counter += 1
                     self.twist.linear.x = 0.3
                     self.cmd_vel_pub.publish(self.twist)
 
                     return 'TurnCounter'
 
-                elif counter == 1 or counter == 6:
+                elif counter == 1 or counter == 6 or counter == 0:
                     #just stop for a moment
                     counter += 1
                     rospy.sleep(0.3)
@@ -173,6 +175,13 @@ class LineFollow(smach.State):
                     rospy.sleep(1)
                     self.twist = Twist()
                     self.cmd_vel_pub.publish(self.twist)
+                    led1 = rospy.Publisher('/mobile_base/commands/led1', Led, queue_size = 1 )
+                    led2 = rospy.Publisher('/mobile_base/commands/led2', Led, queue_size = 1 )
+                    sound = rospy.Publisher('/mobile_base/commands/sound', Sound, queue_size = 1)
+                    led1.publish(3)
+                    led2.publish(3)
+                    sound.publish(0)
+                    rospy.sleep(2)
                     
                     return 'Stop'
 
@@ -305,14 +314,16 @@ class StopState(smach.State):
                 self.cmd_vel_pub.publish(self.twist)
                 if self.end:
                     return 'Done'
-
+                
             
 
             self.twist.linear.x = 0.3
             self.cmd_vel_pub.publish(self.twist)
             rospy.sleep(.5)
+
             if counter == 6:
                 return 'Waypoint'
+                
             return 'Line'
         return 'Done'
 
@@ -380,7 +391,7 @@ class Turn90CounterClockwise(smach.State):
         self.angle = 105
         self.angular_speed = self.speed*2*math.pi/360
         self.relative_angle = self.angle*2.3*math.pi/360
-        self.mult = 1.2
+        self.mult = 1.4
         self.mult2 = 0.8
 
 
@@ -768,6 +779,8 @@ class Shape_Waypoints(smach.State):
         smach.State.__init__(self, outcomes=['success','checkAR5'])
         rospy.loginfo("Setting up client")
         self.led1 = rospy.Publisher('/mobile_base/commands/led1', Led, queue_size = 1 )
+        self.led2 = rospy.Publisher('/mobile_base/commands/led2', Led, queue_size = 1 )
+        self.sound = rospy.Publisher('/mobile_base/commands/sound', Sound, queue_size=1)
         self.client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
         rospy.loginfo("ready1")
         self.client.wait_for_server()
@@ -822,6 +835,12 @@ class Shape_Waypoints(smach.State):
             self.readTime = 1
             rospy.sleep(2)
 
+            if self.shapeLocated:
+                self.led1.publish(1)
+                self.sound.publish(0)
+                rospy.sleep(1)
+                self.led1.publish(0)
+
             goal = rospy.Time.now() + rospy.Duration(2.2)
             twist.linear.x = 0.2
             # rad shape
@@ -833,7 +852,9 @@ class Shape_Waypoints(smach.State):
                 
             
             if self.shapeLocated:
-                self.led1.publish(2)
+                self.led1.publish(1)
+                self.led2.publish(2)
+                self.sound.publish(0)
                 rospy.sleep(1)
             
             image_sub.unregister()
@@ -1047,7 +1068,7 @@ class AR_Waypoints(smach.State):
             twist.linear.x = 0.0  
             cmd_vel_pub.publish(twist) 
 
-            goal = rospy.Time.now() + rospy.Duration(0.3)
+            goal = rospy.Time.now() + rospy.Duration(0.4)
 
             while  rospy.Time.now() < goal:
                 twist.angular.z = -0.4
@@ -1117,6 +1138,31 @@ class SideBox(smach.State):
     def execute(self, userdata):
         global counter, objectives, BoxSpot,BoxGoal, push_waypoints
         while not rospy.is_shutdown():
+
+            first =MoveBaseGoal()
+            first.target_pose.header.frame_id = 'map'
+            first.target_pose.pose.orientation.x = 0
+            first.target_pose.pose.orientation.y = 0
+            first.target_pose.pose.orientation.z = .6935
+            first.target_pose.pose.orientation.w = .7203
+
+            first.target_pose.pose.position.x = 2.12
+            first.target_pose.pose.position.y = -0.64
+            first.target_pose.pose.position.z = 0
+
+            self.client.send_goal(first)
+            self.client.wait_for_result()
+
+
+
+
+
+
+
+
+
+
+
             #go to the goal
             if self.first:
                 self.goal = MoveBaseGoal()
